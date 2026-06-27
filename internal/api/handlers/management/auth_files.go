@@ -493,6 +493,10 @@ func (h *Handler) buildAuthFileEntry(auth *coreauth.Auth) gin.H {
 	if projectID := authProjectID(auth); projectID != "" {
 		entry["project_id"] = projectID
 	}
+	if accountID := authCodexAccountID(auth); accountID != "" {
+		entry["account_id"] = accountID
+		entry["chatgpt_account_id"] = accountID
+	}
 	if accountType, account := auth.AccountInfo(); accountType != "" || account != "" {
 		if accountType != "" {
 			entry["account_type"] = accountType
@@ -615,6 +619,32 @@ func authProjectID(auth *coreauth.Auth) string {
 	if auth.Attributes != nil {
 		if projectID := strings.TrimSpace(auth.Attributes["project_id"]); projectID != "" {
 			return projectID
+		}
+	}
+	return ""
+}
+
+func authCodexAccountID(auth *coreauth.Auth) string {
+	if auth == nil {
+		return ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(auth.Provider), "codex") {
+		return ""
+	}
+	if auth.Metadata != nil {
+		for _, key := range []string{"account_id", "chatgpt_account_id"} {
+			if v, ok := auth.Metadata[key].(string); ok {
+				if accountID := strings.TrimSpace(v); accountID != "" {
+					return accountID
+				}
+			}
+		}
+	}
+	if auth.Attributes != nil {
+		for _, key := range []string{"account_id", "chatgpt_account_id"} {
+			if accountID := strings.TrimSpace(auth.Attributes[key]); accountID != "" {
+				return accountID
+			}
 		}
 	}
 	return ""
