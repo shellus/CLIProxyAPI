@@ -93,6 +93,66 @@ func TestListAuthFiles_IncludesCodexAccountIDFromManager(t *testing.T) {
 	}
 }
 
+func TestListAuthFiles_MarksCodexPATResetNeedsSessionTokenFromManager(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+
+	authDir := t.TempDir()
+	fileName := "codex-pat.json"
+	filePath := filepath.Join(authDir, fileName)
+	if errWrite := os.WriteFile(filePath, []byte(`{"type":"codex","access_token":"at-test-pat"}`), 0o600); errWrite != nil {
+		t.Fatalf("failed to write auth file: %v", errWrite)
+	}
+
+	manager := coreauth.NewManager(nil, nil, nil)
+	record := &coreauth.Auth{
+		ID:       fileName,
+		FileName: fileName,
+		Provider: "codex",
+		Status:   coreauth.StatusActive,
+		Attributes: map[string]string{
+			"path": filePath,
+		},
+		Metadata: map[string]any{
+			"type":         "codex",
+			"access_token": "at-test-pat",
+		},
+	}
+	if _, errRegister := manager.Register(context.Background(), record); errRegister != nil {
+		t.Fatalf("failed to register auth record: %v", errRegister)
+	}
+
+	h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, manager)
+	h.tokenStore = &memoryAuthStore{}
+
+	entry := firstAuthFileEntry(t, h)
+	if got := entry["codex_reset_requires_session_access_token"]; got != true {
+		t.Fatalf("expected codex_reset_requires_session_access_token true, got %#v", got)
+	}
+	if _, leaked := entry["access_token"]; leaked {
+		t.Fatalf("auth file list leaked access_token")
+	}
+}
+
+func TestListAuthFilesFromDisk_MarksCodexPATResetNeedsSessionToken(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+
+	authDir := t.TempDir()
+	filePath := filepath.Join(authDir, "codex-pat.json")
+	if errWrite := os.WriteFile(filePath, []byte(`{"type":"codex","access_token":"at-test-pat"}`), 0o600); errWrite != nil {
+		t.Fatalf("failed to write auth file: %v", errWrite)
+	}
+
+	h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, nil)
+
+	entry := firstAuthFileEntry(t, h)
+	if got := entry["codex_reset_requires_session_access_token"]; got != true {
+		t.Fatalf("expected codex_reset_requires_session_access_token true, got %#v", got)
+	}
+	if _, leaked := entry["access_token"]; leaked {
+		t.Fatalf("auth file list leaked access_token")
+	}
+}
+
 func TestListAuthFilesFromDisk_IncludesProjectID(t *testing.T) {
 	t.Setenv("MANAGEMENT_PASSWORD", "")
 

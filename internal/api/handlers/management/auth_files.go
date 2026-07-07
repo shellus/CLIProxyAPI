@@ -414,6 +414,9 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 				emailValue := gjson.GetBytes(data, "email").String()
 				fileData["type"] = typeValue
 				fileData["email"] = emailValue
+				if codexResetRequiresSessionAccessToken(typeValue, gjson.GetBytes(data, "access_token").String()) {
+					fileData["codex_reset_requires_session_access_token"] = true
+				}
 				if projectID := strings.TrimSpace(gjson.GetBytes(data, "project_id").String()); projectID != "" {
 					fileData["project_id"] = projectID
 				}
@@ -496,6 +499,9 @@ func (h *Handler) buildAuthFileEntry(auth *coreauth.Auth) gin.H {
 	if accountID := authCodexAccountID(auth); accountID != "" {
 		entry["account_id"] = accountID
 		entry["chatgpt_account_id"] = accountID
+	}
+	if authCodexResetRequiresSessionAccessToken(auth) {
+		entry["codex_reset_requires_session_access_token"] = true
 	}
 	if accountType, account := auth.AccountInfo(); accountType != "" || account != "" {
 		if accountType != "" {
@@ -648,6 +654,36 @@ func authCodexAccountID(auth *coreauth.Auth) string {
 		}
 	}
 	return ""
+}
+
+func authCodexResetRequiresSessionAccessToken(auth *coreauth.Auth) bool {
+	if auth == nil {
+		return false
+	}
+	provider := strings.TrimSpace(auth.Provider)
+	if auth.Metadata != nil {
+		if metadataProvider, ok := auth.Metadata["type"].(string); ok && strings.TrimSpace(metadataProvider) != "" {
+			provider = metadataProvider
+		}
+	}
+	if auth.Metadata != nil && codexResetRequiresSessionAccessToken(provider, tokenValueFromMetadata(auth.Metadata)) {
+		return true
+	}
+	if auth.Attributes != nil {
+		for _, key := range []string{"access_token", "accessToken", "token"} {
+			if codexResetRequiresSessionAccessToken(provider, auth.Attributes[key]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func codexResetRequiresSessionAccessToken(provider, accessToken string) bool {
+	if !strings.EqualFold(strings.TrimSpace(provider), "codex") {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(accessToken), "at-")
 }
 
 func extractCodexIDTokenClaims(auth *coreauth.Auth) gin.H {
